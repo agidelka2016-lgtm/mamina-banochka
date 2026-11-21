@@ -33,3 +33,24 @@ export function merge(state,incoming){
  for(const note of incoming.notes){if(ids.has(note.id)||texts.has(normalize(note.text)))continue;state.notes.push({...note});ids.add(note.id);texts.add(normalize(note.text));added++;}return added;
 }
 export function exportData(state,type='backup',extra={}){return {app:'mamina-banochka',version:1,type,created:new Date().toISOString(),notes:state.notes,...(type==='backup'?{seen:state.seen,last:state.last}:{}),...extra};}
+// The fragment is carried by the recipient's link, not sent in HTTP requests.
+export function giftLink(data, base){
+ const gift=validate(data);
+ if(gift.type!=='gift'||!gift.notes.length)throw Error('Выберите хотя бы одну благодарность.');
+ const compact={v:1,n:gift.notes.map(n=>[n.id,n.text]),s:gift.sender,m:gift.message};
+ const bytes=new TextEncoder().encode(JSON.stringify(compact));
+ const encoded=btoa(Array.from(bytes,b=>String.fromCharCode(b)).join('')).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
+ const url=new URL('./',base);url.hash='gift='+encoded;
+ if(url.href.length>8000)throw Error('Для одной ссылки слишком много текста. Выберите меньше записок и подарите остальные второй баночкой.');
+ return url.href;
+}
+export function readGiftLink(hash){
+ if(!hash.startsWith('#gift='))return null;
+ const value=hash.slice(6);
+ if(value.length>8000||!value||!/^[A-Za-z0-9_-]+$/.test(value))throw Error('Ссылка на подарок повреждена. Попросите отправить её целиком.');
+ try{
+  const raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(atob(value.replaceAll('-','+').replaceAll('_','/')),c=>c.charCodeAt(0))));
+  if(raw.v!==1||!Array.isArray(raw.n)||!raw.n.length)throw Error();
+  return validate({app:'mamina-banochka',version:1,type:'gift',notes:raw.n.map(n=>({id:n[0],text:n[1]})),sender:raw.s,message:raw.m});
+ }catch{throw Error('Ссылка на подарок повреждена. Попросите отправить её целиком.');}
+}
