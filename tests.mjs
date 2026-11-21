@@ -1,0 +1,13 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {initial,draw,validate,merge,exportData} from './core.js';
+import {readFile} from 'node:fs/promises';
+test('ten universal starter notes',()=>assert.equal(initial().notes.length,10));
+test('full cycle without repeats, no boundary repeat',()=>{const s=initial(),ids=new Set();for(let i=0;i<10;i++)ids.add(draw(s,()=>0).id);assert.equal(ids.size,10);const last=s.last;assert.notEqual(draw(s,()=>0).id,last);});
+test('single note and empty jar',()=>{const s={notes:[initial().notes[0]],seen:[],last:null};assert.equal(draw(s).id,draw(s).id);assert.throws(()=>draw({notes:[],seen:[]}));});
+test('backup roundtrip preserves progress and personal words',()=>{const s=initial();s.notes.push({id:'mine',text:'Мам, люблю!',kind:'personal'});draw(s);const d=validate(JSON.parse(JSON.stringify(exportData(s))));assert.deepEqual(d.notes,s.notes);assert.deepEqual(d.seen,s.seen);assert.equal(d.last,s.last);});
+test('gift is personal and duplicate imports are harmless',()=>{const s=initial(),gift=validate(exportData({notes:[{id:'gift1',text:'Мамуля, спасибо!',kind:'personal'}]},'gift',{sender:'Сын'}));assert.equal(merge(s,gift),1);assert.equal(merge(s,gift),0);assert.equal(s.notes.at(-1).kind,'gift');assert.equal(s.notes.length,11);});
+test('same text with a new id is not duplicated',()=>{const s=initial();assert.equal(merge(s,{notes:[{id:'other',text:'  Мам, спасибо тебе за жизнь.  '}]}),0);});
+test('reject malformed files before mutation',()=>{for(const data of [null,{}, {app:'mamina-banochka',version:2,type:'backup',notes:[]},{...exportData(initial()),notes:[{id:'x',text:8}]},{...exportData(initial()),notes:[{id:'x',text:'x'},{id:'x',text:'y'}]}])assert.throws(()=>validate(data));});
+test('gift excludes drawing history and removes imported standard privilege',()=>{const d=validate(exportData(initial(),'gift'));assert.equal(d.notes[0].kind,'gift');assert.deepEqual(d.seen,[]);});
+test('offline shell files exist and are nonempty',async()=>{for(const file of ['index.html','style.css','app.js','core.js','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png'])assert.ok((await readFile(new URL(file,import.meta.url))).length>0);});
+test('manifest works under GitHub repository subpath',async()=>{const manifest=JSON.parse(await readFile(new URL('manifest.webmanifest',import.meta.url),'utf8'));assert.equal(new URL(manifest.start_url,'https://example.github.io/mamina-banochka/').pathname,'/mamina-banochka/');assert.equal(manifest.scope,'./');});
